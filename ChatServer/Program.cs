@@ -51,6 +51,7 @@ namespace ChatServer
             if (_clients.Add(clientProfile))
             {
                 clientProfile.DataReceived += OnDataReceivedFromClient;
+                clientProfile.NewMessageInRoomReceived += OnNewMessageInRoomReceived;
             }
 
             Console.WriteLine("Client " + client.ClientAddress + " connected!");
@@ -95,6 +96,7 @@ namespace ChatServer
                     {
                         Console.WriteLine("Sending all messages from room " + requestedRoomID + " to client " + client.Nickname + " (" + client.ID + ")");
 
+                        client.SetRoom(_rooms[requestedRoomID]);
                         var response = new ResponseAllMessagesInRoomPackage(requestedRoomID, _rooms[requestedRoomID].GetMessages());
 
                         await client.Send(response.GetByteArray());
@@ -103,12 +105,30 @@ namespace ChatServer
 
                 case PackageTypes.MessageToRoom:
                     Console.WriteLine("MessageToRoom");
+
+                    var messageToRoom = JsonConvert.DeserializeObject<(Message, string)>(json);
+                    if (_rooms.Has(messageToRoom.Item2))
+                    {
+                        Console.WriteLine("Message to room " + messageToRoom.Item2 + " from client " + client.Nickname + " (" + client.ID + ")");
+
+                        _rooms[messageToRoom.Item2].AddNewMessage(messageToRoom.Item1);
+                    }
                     break;
 
                 default:
                     Console.WriteLine("Unknown type: " + type);
                     break;
             }
+        }
+
+        private async static void OnNewMessageInRoomReceived(object sender, NewMessageInRoomEventArgs e)
+        {
+            Console.WriteLine("New message in room " + e.RoomID);
+
+            var client = sender as ClientProfile;
+            var message = new NewMessageInRoomPackage(e.Message, e.RoomID);
+
+            await client.Send(message.GetByteArray());
         }
     }
 }

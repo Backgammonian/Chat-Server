@@ -20,6 +20,7 @@ namespace ChatServer
         }
 
         public event EventHandler<NetworkDataReceivedEventArgs> DataReceived;
+        public event EventHandler<NewMessageInRoomEventArgs> NewMessageInRoomReceived;
 
         public string ID { get; }
 
@@ -62,9 +63,9 @@ namespace ChatServer
             _currentRoom.NewMessageArrived += OnReceiveMessageFromRoom;
         }
 
-        private void OnReceiveMessageFromRoom(object sender, EventArgs e)
+        private void OnReceiveMessageFromRoom(object sender, NewMessageInRoomEventArgs e)
         {
-
+            NewMessageInRoomReceived?.Invoke(this, e);
         }
     }
 }

@@ -9,14 +9,14 @@ namespace ChatServer
     {
         private readonly List<Message> _messages;
 
-        public event EventHandler NewMessageArrived;
-
         public Room(string name)
         {
             _messages = new List<Message>();
             ID = RandomGenerator.GetRandomString(20);
             Name = name;
         }
+
+        public event EventHandler<NewMessageInRoomEventArgs> NewMessageArrived;
 
         public string ID { get; }
         public string Name { get; }
@@ -25,7 +25,7 @@ namespace ChatServer
         {
             _messages.Add(message);
 
-            NewMessageArrived?.Invoke(this, EventArgs.Empty);
+            NewMessageArrived?.Invoke(this, new NewMessageInRoomEventArgs(ID, message));
         }
 
         public List<Message> GetMessages()
