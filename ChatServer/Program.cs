@@ -18,6 +18,7 @@ namespace ChatServer
             _server.ClientConnected += OnClientConnected;
 
             _clients = new ClientProfiles();
+            _clients.ClientsListUpdated += OnClientsListUpdated;
 
             _rooms = new Rooms();
 
@@ -57,7 +58,6 @@ namespace ChatServer
             Console.WriteLine("Client " + client.ClientAddress + " connected!");
 
             var listOfRooms = new ListOfRoomsPackage(_rooms.GetListOfRooms());
-
             await clientProfile.Send(listOfRooms.GetByteArray());
         }
 
@@ -76,13 +76,22 @@ namespace ChatServer
 
             switch (type)
             {
+                case PackageTypes.ClientsID:
+                    Console.WriteLine("ClientsID");
+
+                    var clientLocalID = JsonConvert.DeserializeObject<string>(json);
+                    client.SetLocalID(clientLocalID);
+
+                    Console.WriteLine("Set local ID of client " + client.ID + " to " + clientLocalID);
+                    break;
+
                 case PackageTypes.ClientsNickname:
                     Console.WriteLine("ClientsNickname");
 
                     var clientInfo = JsonConvert.DeserializeObject<(string, string)>(json);
-                    if (client.ID == clientInfo.Item1)
+                    if (client.LocalID == clientInfo.Item1)
                     {
-                        Console.WriteLine("Nickname of client " + client.ID + "changed from " + client.Nickname + " to " + clientInfo.Item2);
+                        Console.WriteLine("Nickname of client " + client.LocalID + " changed from " + client.Nickname + " to " + clientInfo.Item2);
 
                         client.SetNickname(clientInfo.Item2);
                     }
@@ -107,12 +116,19 @@ namespace ChatServer
                     Console.WriteLine("MessageToRoom");
 
                     var messageToRoom = JsonConvert.DeserializeObject<(Message, string)>(json);
-                    if (_rooms.Has(messageToRoom.Item2))
+                    if (messageToRoom.Item1.AuthorsID == client.LocalID &&
+                        _rooms.Has(messageToRoom.Item2))
                     {
                         Console.WriteLine("Message to room " + messageToRoom.Item2 + " from client " + client.Nickname + " (" + client.ID + ")");
 
                         _rooms[messageToRoom.Item2].AddNewMessage(messageToRoom.Item1);
                     }
+                    break;
+
+                case PackageTypes.ClientDisconnect:
+                    Console.WriteLine("ClientDisconnect");
+
+                    _clients.Remove(client);
                     break;
 
                 default:
@@ -129,6 +145,17 @@ namespace ChatServer
             var message = new NewMessageInRoomPackage(e.Message, e.RoomID);
 
             await client.Send(message.GetByteArray());
+        }
+
+        private async static void OnClientsListUpdated(object sender, EventArgs e)
+        {
+            var listOfClients = new ClientsListUpdatedPackage(_clients.GetListOfClients());
+            var data = listOfClients.GetByteArray();
+
+            foreach (var client in _clients)
+            {
+                await client.Send(data);
+            }
         }
     }
 }

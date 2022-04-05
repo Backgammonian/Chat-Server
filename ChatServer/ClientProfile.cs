@@ -9,6 +9,7 @@ namespace ChatServer
         private readonly Client _client;
         private string _nickname;
         private Room _currentRoom;
+        private bool _isLocalIDSet;
 
         public ClientProfile(Client client)
         {
@@ -23,6 +24,7 @@ namespace ChatServer
         public event EventHandler<NewMessageInRoomEventArgs> NewMessageInRoomReceived;
 
         public string ID { get; }
+        public string LocalID { get; private set; }
 
         public string Nickname 
         {
@@ -50,6 +52,16 @@ namespace ChatServer
         public void SetNickname(string nickname)
         {
             Nickname = nickname;
+        }
+
+        public void SetLocalID(string localID)
+        {
+            if (!_isLocalIDSet)
+            {
+                LocalID = localID;
+            }
+            
+            _isLocalIDSet = true;
         }
 
         public void SetRoom(Room room)
