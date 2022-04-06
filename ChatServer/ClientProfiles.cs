@@ -13,8 +13,6 @@ namespace ChatServer
             _clients = new Dictionary<string, ClientProfile>();
         }
 
-        public event EventHandler ClientsListUpdated;
-
         public ClientProfile this[string clientID]
         {
             get => _clients[clientID];
@@ -31,7 +29,6 @@ namespace ChatServer
             if (!Has(client))
             {
                 _clients.Add(client.ID, client);
-                ClientsListUpdated?.Invoke(this, EventArgs.Empty);
 
                 return true;
             }
@@ -44,7 +41,6 @@ namespace ChatServer
             if (Has(client))
             {
                 _clients.Remove(client.ID);
-                ClientsListUpdated?.Invoke(this, EventArgs.Empty);
 
                 return true;
             }

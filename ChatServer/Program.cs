@@ -18,7 +18,6 @@ namespace ChatServer
             _server.ClientConnected += OnClientConnected;
 
             _clients = new ClientProfiles();
-            _clients.ClientsListUpdated += OnClientsListUpdated;
 
             _rooms = new Rooms();
 
@@ -76,24 +75,42 @@ namespace ChatServer
 
             switch (type)
             {
-                case PackageTypes.ClientsID:
-                    Console.WriteLine("ClientsID");
-
-                    var clientLocalID = JsonConvert.DeserializeObject<string>(json);
-                    client.SetLocalID(clientLocalID);
-
-                    Console.WriteLine("Set local ID of client " + client.ID + " to " + clientLocalID);
-                    break;
-
-                case PackageTypes.ClientsNickname:
-                    Console.WriteLine("ClientsNickname");
+                case PackageTypes.ClientHello:
+                    Console.WriteLine("ClientHello");
 
                     var clientInfo = JsonConvert.DeserializeObject<(string, string)>(json);
-                    if (client.LocalID == clientInfo.Item1)
-                    {
-                        Console.WriteLine("Nickname of client " + client.LocalID + " changed from " + client.Nickname + " to " + clientInfo.Item2);
+                    client.SetLocalID(clientInfo.Item1);
+                    client.SetNickname(clientInfo.Item2);
 
-                        client.SetNickname(clientInfo.Item2);
+                    Console.WriteLine("Client " + client.ID + " got new infos: " + clientInfo.Item2 + " (" + clientInfo.Item1 + ")");
+                    Console.WriteLine("Sending info about existing clients...");
+
+                    var listOfClients = new ClientsListUpdatedPackage(_clients.GetListOfClients());
+                    var data = listOfClients.GetByteArray();
+
+                    foreach (var clientProfile in _clients)
+                    {
+                        await clientProfile.Send(data);
+                    }
+                    break;
+
+                case PackageTypes.ClientsNewNickname:
+                    Console.WriteLine("ClientsNewNickname");
+
+                    var clientsNewNickname = JsonConvert.DeserializeObject<(string, string)>(json);
+                    if (client.LocalID == clientsNewNickname.Item1)
+                    {
+                        Console.WriteLine("Nickname of client " + client.LocalID + " changed from " + client.Nickname + " to " + clientsNewNickname.Item2);
+
+                        client.SetNickname(clientsNewNickname.Item2);
+
+                        var listOfClients1 = new ClientsListUpdatedPackage(_clients.GetListOfClients());
+                        var data1 = listOfClients1.GetByteArray();
+
+                        foreach (var clientProfile in _clients)
+                        {
+                            await clientProfile.Send(data1);
+                        }
                     }
                     break;
 
@@ -127,8 +144,17 @@ namespace ChatServer
 
                 case PackageTypes.ClientDisconnect:
                     Console.WriteLine("ClientDisconnect");
+                    Console.WriteLine("Sending info about existing clients...");
+
+                    var listOfExistingClients = new ClientsListUpdatedPackage(_clients.GetListOfClients());
+                    var listOfClientsData = listOfExistingClients.GetByteArray();
 
                     _clients.Remove(client);
+
+                    foreach (var clientProfile in _clients)
+                    {
+                        await clientProfile.Send(listOfClientsData);
+                    }
                     break;
 
                 default:
@@ -145,17 +171,6 @@ namespace ChatServer
             var message = new NewMessageInRoomPackage(e.Message, e.RoomID);
 
             await client.Send(message.GetByteArray());
-        }
-
-        private async static void OnClientsListUpdated(object sender, EventArgs e)
-        {
-            var listOfClients = new ClientsListUpdatedPackage(_clients.GetListOfClients());
-            var data = listOfClients.GetByteArray();
-
-            foreach (var client in _clients)
-            {
-                await client.Send(data);
-            }
         }
     }
 }
