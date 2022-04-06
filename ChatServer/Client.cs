@@ -31,6 +31,7 @@ namespace ChatServer
             ClientAddress = _client.RemoteEndPoint as IPEndPoint;
         }
 
+        public event EventHandler ErrorOccured;
         public event EventHandler<NetworkDataReceivedEventArgs> DataReceived;
 
         public IPEndPoint ClientAddress { get; }
@@ -47,6 +48,8 @@ namespace ChatServer
             catch (Exception e)
             {
                 Console.WriteLine(e);
+
+                ErrorOccured?.Invoke(this, EventArgs.Empty);
             }
         }
 
@@ -65,6 +68,9 @@ namespace ChatServer
             catch (Exception e)
             {
                 Console.WriteLine(e);
+                _tokenSource.Cancel();
+
+                ErrorOccured?.Invoke(this, EventArgs.Empty);
 
                 return Array.Empty<byte>();
             }

@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Threading.Tasks;
+using System.Net.NetworkInformation;
+using System.Linq;
 using Newtonsoft.Json;
 using Shared;
 using ChatMessages;
@@ -14,7 +16,44 @@ namespace ChatServer
 
         private static async Task Main(string[] args)
         {
-            _server = new Server(55000);
+            /*var listeners = IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners();
+            foreach (var listener in listeners)
+            {
+                Console.WriteLine(listener.ToString());
+            }*/
+
+            ushort serverPort = 55000;
+            var isPortChosen = false;
+            while (!isPortChosen)
+            {
+                Console.WriteLine("Enter server port:");
+                var line = Console.ReadLine();
+
+                if (line.Length == 0)
+                {
+                    //default port
+                    isPortChosen = true;
+                }
+                else
+                if (ushort.TryParse(line, out ushort selectedPort))
+                {
+                    if (IsPortOccupied(selectedPort))
+                    {
+                        Console.WriteLine("Port " + selectedPort + " is already occupied, thy another");
+                    }
+                    else
+                    {
+                        serverPort = selectedPort;
+                        isPortChosen = true;
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("Invalid port, try again");
+                }
+            }
+
+            _server = new Server(serverPort);
             _server.ClientConnected += OnClientConnected;
 
             _clients = new ClientProfiles();
@@ -39,9 +78,14 @@ namespace ChatServer
             restRoom.AddNewMessage(new Message("Hello message 3 in rest room", "Server", "--", DateTime.Now));
             _rooms.Add(restRoom);
 
-            Console.WriteLine("Server started!");
+            Console.WriteLine("Server started on port " + serverPort);
 
             await _server.StartListen();
+        }
+
+        private static bool IsPortOccupied(int port)
+        {
+            return IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners().Any(p => p.Port == port);
         }
 
         private static async void OnClientConnected(object sender, ClientConnectedEventArgs e)
@@ -52,6 +96,8 @@ namespace ChatServer
             {
                 clientProfile.DataReceived += OnDataReceivedFromClient;
                 clientProfile.NewMessageInRoomReceived += OnNewMessageInRoomReceived;
+                clientProfile.ClientLoaded += OnClientLoaded;
+                clientProfile.ErrorOccured += OnClientErrorOccured;
             }
 
             Console.WriteLine("Client " + client.ClientAddress + " connected!");
@@ -68,30 +114,23 @@ namespace ChatServer
             }
 
             var client = sender as ClientProfile;
-
             var dataReader = new SimpleReader(e.Data);
-            var type = (PackageTypes)dataReader.GetByte();
-            var json = dataReader.GetString();
 
-            switch (type)
+            if (!dataReader.TryGetByte(out byte type) ||
+                !dataReader.TryGetString(out string json))
+            {
+                return;
+            }
+
+            switch ((PackageTypes)type)
             {
                 case PackageTypes.ClientHello:
                     Console.WriteLine("ClientHello");
 
                     var clientInfo = JsonConvert.DeserializeObject<(string, string)>(json);
-                    client.SetLocalID(clientInfo.Item1);
-                    client.SetNickname(clientInfo.Item2);
+                    client.SetInfo(clientInfo.Item1, clientInfo.Item2);
 
                     Console.WriteLine("Client " + client.ID + " got new infos: " + clientInfo.Item2 + " (" + clientInfo.Item1 + ")");
-                    Console.WriteLine("Sending info about existing clients...");
-
-                    var listOfClients = new ClientsListUpdatedPackage(_clients.GetListOfClients());
-                    var data = listOfClients.GetByteArray();
-
-                    foreach (var clientProfile in _clients)
-                    {
-                        await clientProfile.Send(data);
-                    }
                     break;
 
                 case PackageTypes.ClientsNewNickname:
@@ -103,14 +142,7 @@ namespace ChatServer
                         Console.WriteLine("Nickname of client " + client.LocalID + " changed from " + client.Nickname + " to " + clientsNewNickname.Item2);
 
                         client.SetNickname(clientsNewNickname.Item2);
-
-                        var listOfClients1 = new ClientsListUpdatedPackage(_clients.GetListOfClients());
-                        var data1 = listOfClients1.GetByteArray();
-
-                        foreach (var clientProfile in _clients)
-                        {
-                            await clientProfile.Send(data1);
-                        }
+                        await NotifyClients();
                     }
                     break;
 
@@ -124,7 +156,6 @@ namespace ChatServer
 
                         client.SetRoom(_rooms[requestedRoomID]);
                         var response = new ResponseAllMessagesInRoomPackage(requestedRoomID, _rooms[requestedRoomID].GetMessages());
-
                         await client.Send(response.GetByteArray());
                     }
                     break;
@@ -146,15 +177,8 @@ namespace ChatServer
                     Console.WriteLine("ClientDisconnect");
                     Console.WriteLine("Sending info about existing clients...");
 
-                    var listOfExistingClients = new ClientsListUpdatedPackage(_clients.GetListOfClients());
-                    var listOfClientsData = listOfExistingClients.GetByteArray();
-
                     _clients.Remove(client);
-
-                    foreach (var clientProfile in _clients)
-                    {
-                        await clientProfile.Send(listOfClientsData);
-                    }
+                    await NotifyClients();
                     break;
 
                 default:
@@ -171,6 +195,31 @@ namespace ChatServer
             var message = new NewMessageInRoomPackage(e.Message, e.RoomID);
 
             await client.Send(message.GetByteArray());
+        }
+
+        private async static Task NotifyClients()
+        {
+            Console.WriteLine("(NotifyClients)");
+
+            var listOfClients = new ClientsListUpdatedPackage(_clients.GetListOfClients());
+            var data = listOfClients.GetByteArray();
+
+            foreach (var clientProfile in _clients)
+            {
+                await clientProfile.Send(data);
+            }
+        }
+
+        private async static void OnClientLoaded(object sender, EventArgs e)
+        {
+            await NotifyClients();
+        }
+
+        private async static void OnClientErrorOccured(object sender, EventArgs e)
+        {
+            var client = sender as ClientProfile;
+            _clients.Remove(client);
+            await NotifyClients();
         }
     }
 }

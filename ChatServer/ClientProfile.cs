@@ -9,22 +9,26 @@ namespace ChatServer
         private readonly Client _client;
         private string _nickname;
         private Room _currentRoom;
-        private bool _isLocalIDSet;
 
         public ClientProfile(Client client)
         {
             _client = client;
             _client.DataReceived += OnDataReceived;
+            _client.ErrorOccured += OnErrorOccured;
             _client.StartListen();
             ID = _client.ClientAddress.ToString();
             Nickname = "UserName";
+            IsLoaded = false;
         }
 
+        public event EventHandler ClientLoaded;
+        public event EventHandler ErrorOccured;
         public event EventHandler<NetworkDataReceivedEventArgs> DataReceived;
         public event EventHandler<NewMessageInRoomEventArgs> NewMessageInRoomReceived;
 
         public string ID { get; }
         public string LocalID { get; private set; }
+        public bool IsLoaded { get; private set; }
 
         public string Nickname 
         {
@@ -49,19 +53,21 @@ namespace ChatServer
             DataReceived?.Invoke(this, e);
         }
 
+        public void SetInfo(string localID, string nickname)
+        {
+            if (!IsLoaded)
+            {
+                LocalID = localID;
+                Nickname = nickname;
+            }
+
+            IsLoaded = true;
+            ClientLoaded?.Invoke(this, EventArgs.Empty);
+        }
+
         public void SetNickname(string nickname)
         {
             Nickname = nickname;
-        }
-
-        public void SetLocalID(string localID)
-        {
-            if (!_isLocalIDSet)
-            {
-                LocalID = localID;
-            }
-            
-            _isLocalIDSet = true;
         }
 
         public void SetRoom(Room room)
@@ -78,6 +84,11 @@ namespace ChatServer
         private void OnReceiveMessageFromRoom(object sender, NewMessageInRoomEventArgs e)
         {
             NewMessageInRoomReceived?.Invoke(this, e);
+        }
+
+        private void OnErrorOccured(object sender, EventArgs e)
+        {
+            ErrorOccured?.Invoke(this, EventArgs.Empty);
         }
     }
 }
